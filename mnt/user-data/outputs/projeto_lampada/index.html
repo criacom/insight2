@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tarefa Experimental — Lâmpada</title>
+<style>
+  :root{
+    --ink:#1a1a2e;
+    --paper:#f4f1e8;
+    --amber:#f5a623;
+    --amber-glow:#ffd166;
+    --green:#2ec27e;
+    --green-dark:#1a7a4d;
+    --line:#3a3a5c;
+    --muted:#6b6b80;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:'Courier New',Courier,monospace;
+    background:#1a1a1a;
+    color:var(--ink);
+    overflow:hidden;
+    height:100vh;
+  }
+  #stage{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    cursor:crosshair;
+    background:#1a1a1a;
+  }
+  
+  /* Background workbench - full scene */
+  .workbench-bg{
+    position:absolute;
+    bottom:0;
+    left:50%;
+    transform:translateX(-50%);
+    width:100%;
+    height:auto;
+    max-height:85vh;
+    object-fit:contain;
+    object-position:bottom center;
+    pointer-events:none;
+    z-index:1;
+    display:block;
+  }
+  
+  /* Lab items positioned on bench */
+  .lab-item{
+    position:absolute;
+    pointer-events:all;
+    z-index:5;
+    transition:transform 0.1s;
+  }
+  .lab-item:hover{
+    transform:scale(1.05);
+  }
+  
+  /* HUD */
+  #hud{
+    position:fixed;
+    top:18px;left:18px;
+    z-index:50;
+    background:var(--ink);
+    color:var(--paper);
+    padding:14px 18px;
+    border-radius:4px;
+    border:2px solid var(--line);
+    font-size:13px;
+    line-height:1.7;
+    box-shadow:6px 6px 0 rgba(26,26,46,.25);
+    min-width:210px;
+  }
+  #hud .phase-name{
+    font-size:15px;font-weight:bold;letter-spacing:1px;
+    color:var(--amber-glow);text-transform:uppercase;
+    border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:6px;
+  }
+  #hud .row{display:flex;justify-content:space-between;gap:18px;}
+  #hud .row b{color:var(--green);}
+
+  /* Training lamp - CSS (yellow flickering) */
+  .lamp-target{
+    position:absolute;
+    width:90px;height:90px;
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity .2s;
+    z-index:15;
+  }
+  .bulb{
+    width:54px;height:70px;position:relative;
+  }
+  .bulb .glass{
+    width:54px;height:54px;border-radius:50% 50% 50% 50%/55% 55% 45% 45%;
+    background:radial-gradient(circle at 35% 30%, var(--amber-glow), var(--amber) 70%);
+    box-shadow:0 0 28px 8px rgba(245,166,35,.7), inset -4px -6px 10px rgba(180,110,0,.4);
+    position:absolute;top:0;left:0;
+    animation:flicker 2.4s infinite;
+  }
+  .bulb .base{
+    width:26px;height:20px;background:#8a8a8a;
+    border-radius:2px;position:absolute;bottom:0;left:14px;
+    background-image:repeating-linear-gradient(0deg,#9a9a9a 0 3px,#6a6a6a 3px 6px);
+  }
+  @keyframes flicker{
+    0%,100%{opacity:1}48%{opacity:.92}50%{opacity:.78}52%{opacity:.95}
+  }
+  .lamp-target.hot{outline:3px dashed rgba(245,166,35,.5);outline-offset:6px;border-radius:50%;}
+
+  /* Green button (phase 2) */
+  #greenBtn{
+    position:absolute;
+    width:90px;height:90px;border-radius:50%;
+    border:4px solid var(--green-dark);
+    background:radial-gradient(circle at 35% 30%, #66e0a3, var(--green) 65%);
+    cursor:pointer;
+    box-shadow:0 8px 0 var(--green-dark), 0 0 22px rgba(46,194,126,.5);
+    color:#063;font-weight:bold;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .06s, box-shadow .06s;
+    user-select:none;
+    z-index:15;
+  }
+  #greenBtn:active{transform:translateY(6px);box-shadow:0 2px 0 var(--green-dark), 0 0 22px rgba(46,194,126,.5);}
+
+  /* Socket and lamp images */
+  .socket-img, .lamp-img{
+    position:absolute;
+    pointer-events:none;
+    z-index:10;
+  }
+  .lamp-img.draggable{
+    pointer-events:auto;
+    cursor:grab;
+    z-index:20;
+  }
+  .lamp-img.draggable.grabbing{cursor:grabbing;}
+  
+  /* Golden glow when lit */
+  .socket-img.lit::after{
+    content:'';
+    position:absolute;
+    inset:-40px;
+    background:radial-gradient(circle at center, rgba(255,215,0,0.5) 0%, rgba(255,215,0,0.3) 40%, transparent 70%);
+    border-radius:50%;
+    animation:golden-pulse 2s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes golden-pulse{
+    0%,100%{opacity:0.7;transform:scale(1);}
+    50%{opacity:1;transform:scale(1.15);}
+  }
+
+  /* Buttons / overlays */
+  .ctrl-btn{
+    font-family:inherit;font-size:15px;font-weight:bold;
+    padding:14px 30px;border:2px solid var(--ink);border-radius:4px;
+    background:var(--amber);color:var(--ink);cursor:pointer;
+    box-shadow:4px 4px 0 var(--ink);transition:transform .08s;
+  }
+  .ctrl-btn:active{transform:translate(4px,4px);box-shadow:0 0 0 var(--ink);}
+  .ctrl-btn.green{background:var(--green);}
+
+  #overlay{
+    position:fixed;inset:0;z-index:100;
+    background:rgba(26,26,46,.92);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;padding:30px;
+  }
+  #overlay .card{
+    background:var(--paper);border:3px solid var(--amber);
+    border-radius:8px;padding:40px;max-width:560px;
+    box-shadow:10px 10px 0 rgba(245,166,35,.3);
+  }
+  #overlay h1{font-size:26px;margin-bottom:14px;letter-spacing:1px;}
+  #overlay p{font-size:15px;line-height:1.7;color:var(--ink);margin-bottom:14px;text-align:left;}
+  .hidden{display:none!important;}
+
+  /* Heatmap canvas - hidden during experiment */
+  #heatmap{position:fixed;inset:0;z-index:5;pointer-events:none;display:none;}
+
+  /* Results */
+  #results{
+    position:fixed;inset:0;z-index:100;
+    background:rgba(26,26,46,.92);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;padding:30px;
+    overflow-y:auto;
+  }
+  #results .card{
+    max-width:900px;
+    background:var(--paper);
+    border:3px solid var(--green);
+    border-radius:8px;
+    padding:40px;
+    box-shadow:10px 10px 0 rgba(46,194,126,.3);
+  }
+  #results h1{color:var(--green-dark);}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0;}
+  .stat-box{background:var(--ink);color:var(--paper);padding:14px;border-radius:4px;}
+  .stat-box .num{font-size:28px;color:var(--amber-glow);font-weight:bold;}
+  .stat-box .lbl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+  .phase-section{margin:24px 0;border-top:2px solid var(--line);padding-top:18px;}
+  .phase-section h3{font-size:16px;margin-bottom:10px;color:var(--ink);text-transform:uppercase;letter-spacing:1px;}
+  .heatmap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0;}
+  .heatmap-item{border:2px solid var(--ink);border-radius:4px;overflow:hidden;background:#101022;}
+  .heatmap-item canvas{display:block;width:100%;height:auto;}
+  .heatmap-item .label{background:var(--ink);color:var(--paper);padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;}
+  .small{font-size:12px;color:var(--muted);}
+  
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--green-dark);color:#fff;padding:12px 22px;border-radius:30px;
+    font-weight:bold;z-index:60;opacity:0;transition:opacity .3s;
+  }
+  .toast.show{opacity:1;}
+
+  /* Reward animations */
+  @keyframes sparkle-burst{
+    0%{transform:translate(-50%,-50%) scale(0) rotate(0deg);opacity:1;}
+    100%{transform:translate(-50%,-50%) scale(2.5) rotate(180deg);opacity:0;}
+  }
+  @keyframes big-pop{
+    0%{transform:translate(-50%,-50%) scale(0);opacity:1;}
+    50%{transform:translate(-50%,-50%) scale(1.4);}
+    100%{transform:translate(-50%,-50%) scale(1) rotate(15deg);opacity:0;}
+  }
+  .sparkle{
+    position:fixed;
+    font-size:40px;
+    pointer-events:none;
+    z-index:80;
+    animation:sparkle-burst 0.8s ease-out forwards;
+  }
+  .big-reward{
+    position:fixed;
+    font-size:120px;
+    font-weight:bold;
+    color:var(--amber);
+    text-shadow:0 0 20px rgba(245,166,35,0.8), 
+                0 0 40px rgba(245,166,35,0.6),
+                3px 3px 0 var(--ink);
+    pointer-events:none;
+    z-index:90;
+    animation:big-pop 1s ease-out forwards;
+    font-family:'Courier New',Courier,monospace;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="heatmap"></canvas>
+
+  <div id="hud" class="hidden">
+    <div class="phase-name" id="phaseName">—</div>
+    <div class="row"><span>Pontos</span><b id="score">0</b></div>
+    <div class="row"><span>Meta</span><span id="goal">5</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- Welcome overlay -->
+<div id="overlay">
+  <div class="card">
+    <h1>💡 Tarefa Experimental</h1>
+    <p>Você irá realizar uma tarefa interativa. Descubra o que fazer observando a tela.</p>
+    <p class="small">Ao final você verá os dados registrados durante o experimento.</p>
+    <button class="ctrl-btn" id="startBtn">Começar</button>
+  </div>
+</div>
+
+<!-- Results overlay -->
+<div id="results" class="hidden">
+  <div class="card">
+    <h1>🎉 Experimento Concluído</h1>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" id="rTotalClicks">0</div><div class="lbl">Cliques totais</div></div>
+      <div class="stat-box"><div class="num" id="rTime">0s</div><div class="lbl">Tempo total</div></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>📊 Cliques por Fase</h3>
+      <div id="clicksByPhase" style="font-size:13px;line-height:1.8;"></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>⏱️ Tempo de Solução por Fase</h3>
+      <div id="timeByPhase" style="font-size:13px;line-height:1.8;"></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>🗺️ Mapas de Calor por Fase</h3>
+      <div class="heatmap-grid" id="heatmapGrid"></div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:30px;">
+      <button class="ctrl-btn green" id="downloadBtn">Baixar dados (CSV)</button>
+      <button class="ctrl-btn" id="restartBtn">Refazer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Elements ----------
+  const stage = document.getElementById('stage');
+  const hud = document.getElementById('hud');
+  const phaseName = document.getElementById('phaseName');
+  const scoreEl = document.getElementById('score');
+  const goalEl = document.getElementById('goal');
+  const overlay = document.getElementById('overlay');
+  const results = document.getElementById('results');
+  const toast = document.getElementById('toast');
+  const heatmap = document.getElementById('heatmap');
+  const hctx = heatmap.getContext('2d');
+
+  // ---------- Data logging ----------
+  const log = {
+    moves: [],
+    clicks: [],
+    phaseClicks: {},
+    phaseTimes: {}
+  };
+  let experimentStart = 0;
+
+  function now(){ return performance.now(); }
+  function elapsed(){ return now() - experimentStart; }
+
+  function startPhaseTimer(phase){
+    log.phaseTimes[phase] = {start: elapsed(), end: null};
+  }
+  function endPhaseTimer(phase){
+    if (log.phaseTimes[phase]) log.phaseTimes[phase].end = elapsed();
+  }
+  function recordClick(phase){
+    if (!log.phaseClicks[phase]) log.phaseClicks[phase] = 0;
+    log.phaseClicks[phase]++;
+  }
+
+  // ---------- Heatmap (drawn only in results) ----------
+  function sizeCanvas(){
+    heatmap.width = window.innerWidth;
+    heatmap.height = window.innerHeight;
+  }
+  sizeCanvas();
+  window.addEventListener('resize', sizeCanvas);
+
+  // ---------- Global mouse tracking ----------
+  let lastMoveLog = 0;
+  let currentPhase = 'idle';
+
+  stage.addEventListener('mousemove', e=>{
+    const t = elapsed();
+    if (t - lastMoveLog > 50){
+      log.moves.push({t:Math.round(t), x:e.clientX, y:e.clientY, phase:currentPhase});
+      lastMoveLog = t;
+    }
+  });
+  stage.addEventListener('mousedown', e=>{
+    log.clicks.push({t:Math.round(elapsed()), x:e.clientX, y:e.clientY, phase:currentPhase});
+    recordClick(currentPhase);
+  });
+  stage.addEventListener('touchmove', e=>{
+    const tch = e.touches[0]; if(!tch) return;
+    const t = elapsed();
+    if (t - lastMoveLog > 50){
+      log.moves.push({t:Math.round(t), x:tch.clientX, y:tch.clientY, phase:currentPhase});
+      lastMoveLog = t;
+    }
+  }, {passive:true});
+
+  // ---------- Helpers ----------
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'), 1200);
+  }
+  function showReward(x, y){
+    const bigText = document.createElement('div');
+    bigText.className = 'big-reward';
+    bigText.textContent = '+1';
+    bigText.style.left = x + 'px';
+    bigText.style.top = y + 'px';
+    document.body.appendChild(bigText);
+    setTimeout(()=>bigText.remove(), 1000);
+
+    const emojis = ['✨','⭐','💥','🌟','✨','⚡','💫'];
+    for (let i=0; i<8; i++){
+      const sparkle = document.createElement('div');
+      sparkle.className = 'sparkle';
+      sparkle.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 60 + Math.random()*40;
+      sparkle.style.left = (x + Math.cos(angle)*dist) + 'px';
+      sparkle.style.top = (y + Math.sin(angle)*dist) + 'px';
+      document.body.appendChild(sparkle);
+      setTimeout(()=>sparkle.remove(), 800);
+    }
+  }
+  function randPos(w, h){
+    const pad = 80;
+    const x = pad + Math.random()*(window.innerWidth - w - pad*2);
+    const y = pad + 120 + Math.random()*(window.innerHeight - h - pad*2 - 120);
+    return {x, y};
+  }
+  function randPosWithMinDistance(w, h, prevX, prevY, minDist){
+    const pad = 80;
+    let x, y, attempts = 0;
+    const maxAttempts = 100;
+    
+    do {
+      x = pad + Math.random()*(window.innerWidth - w - pad*2);
+      y = pad + 120 + Math.random()*(window.innerHeight - h - pad*2 - 120);
+      attempts++;
+      
+      if (prevX === null || prevY === null) break;
+      
+      const dist = Math.hypot(x - prevX, y - prevY);
+      if (dist >= minDist) break;
+      
+    } while (attempts < maxAttempts);
+    
+    return {x, y};
+  }
+  function randLampStart(){
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const margin = 100;
+    
+    const x = margin + Math.random()*(screenW * 0.5 - margin);
+    const y = margin + Math.random()*(screenH * 0.4);
+    
+    return {x, y};
+  }
+  function updateHud(name, goal){
+    phaseName.textContent = name;
+    goalEl.textContent = goal;
+  }
+
+  // ---------- Lab scene with positioned transparent items ----------
+  function createLabScene(){
+    const scene = document.createElement('div');
+    scene.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;';
+    scene.id = 'labScene';
+    
+    // Background workbench WITHOUT items (empty bench)
+    const bg = document.createElement('img');
+    bg.src = 'bck.png';
+    bg.className = 'workbench-bg';
+    bg.onerror = function(){ console.error('ERRO: bck.png não carregou'); };
+    bg.onload = function(){ console.log('✓ bck.png carregada'); };
+    scene.appendChild(bg);
+    
+    // Position items with transparent backgrounds on top
+    // Based on reference image positions (percentages from bottom-left)
+    const items = [
+      // Left side (bottom row)
+      {src:'lamp_verde_encaixada.png', w:110, bottom:23, left:6.5, id:'lit-lamp'},  // Green lamp on socket
+      {src:'encaixe.jpeg', w:80, bottom:23, left:7, id:'empty-socket'}, // Empty socket (hidden initially)
+      {src:'05_becker_liquido_azul.png', w:80, bottom:25, left:17},
+      {src:'06_balao_liquido_roxo.png', w:95, bottom:24, left:27},
+      {src:'07_suporte_tubos_ensaio.png', w:100, bottom:25, left:38.5},
+      {src:'08_livros_antigos.png', w:110, bottom:24, left:52},
+      
+      // Right side (bottom row)
+      {src:'09_microscopio_steampunk.png', w:130, bottom:23, left:67},
+      {src:'10_maquina_medidor_engrenagem.png', w:140, bottom:23, left:82}
+    ];
+    
+    items.forEach(item=>{
+      const img = document.createElement('img');
+      img.src = item.src;
+      img.className = 'lab-item';
+      if(item.id) img.id = item.id;
+      img.style.width = item.w + 'px';
+      img.style.height = 'auto';
+      img.style.bottom = item.bottom + '%';
+      img.style.left = item.left + '%';
+      img.onerror = function(){ console.error('ERRO:', item.src, 'não carregou'); };
+      img.onload = function(){ console.log('✓', item.src, 'carregada'); };
+      
+      // Hide empty socket initially (will show in test phases)
+      if(item.id === 'empty-socket') img.style.display = 'none';
+      
+      scene.appendChild(img);
+    });
+    
+    return scene;
+  }
+
+  // ============================================================
+  // PHASE 0 — initial test (10 seconds)
+  // ============================================================
+  function startPhase0(){
+    currentPhase = 'teste_inicial';
+    startPhaseTimer(currentPhase);
+    updateHud('Tarefa', '10s');
+    scoreEl.textContent = '—';
+
+    let timerSeconds = 10;
+    const timerInterval = setInterval(()=>{
+      timerSeconds--;
+      goalEl.textContent = timerSeconds + 's';
+      if (timerSeconds <= 0){
+        clearInterval(timerInterval);
+        endPhaseTimer(currentPhase);
+        cleanupPhase0();
+        setTimeout(startPhase1, 700);
+      }
+    }, 1000);
+
+    const labScene = createLabScene();
+    stage.appendChild(labScene);
+
+    // Hide the lit lamp, show empty socket
+    const litLamp = labScene.querySelector('#lit-lamp');
+    const emptySocket = labScene.querySelector('#empty-socket');
+    if(litLamp) litLamp.style.display = 'none';
+    if(emptySocket){
+      emptySocket.style.display = 'block';
+      emptySocket.classList.add('socket-img');
+    }
+
+    // Create draggable green lamp bulb
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_verde_so_cabeca.jpeg';
+    lamp.className = 'lamp-img draggable';
+    lamp.style.width = '100px';
+    lamp.style.height = 'auto';
+    lamp.onerror = function(){ console.error('ERRO: lamp_verde_so_cabeca.jpeg não carregou'); };
+    lamp.onload = function(){ console.log('✓ lamp_verde_so_cabeca.jpeg carregada'); };
+    const lampStart = randLampStart();
+    lamp.style.left = lampStart.x + 'px';
+    lamp.style.top = lampStart.y + 'px';
+    stage.appendChild(lamp);
+
+    let dragging = false, offX = 0, offY = 0;
+    let solved = false;
+
+    function pointer(e){
+      return e.touches ? e.touches[0] : e;
+    }
+    function startDrag(e){
+      dragging = true;
+      lamp.classList.add('grabbing');
+      const p = pointer(e);
+      const rect = lamp.getBoundingClientRect();
+      offX = p.clientX - rect.left;
+      offY = p.clientY - rect.top;
+      e.preventDefault();
+    }
+    function moveDrag(e){
+      if (!dragging) return;
+      const p = pointer(e);
+      lamp.style.left = (p.clientX - offX) + 'px';
+      lamp.style.top = (p.clientY - offY) + 'px';
+    }
+    function endDrag(){
+      if (!dragging || solved) return;
+      dragging = false;
+      lamp.classList.remove('grabbing');
+      
+      if(!emptySocket) return;
+      
+      const lampRect = lamp.getBoundingClientRect();
+      const socketRect = emptySocket.getBoundingClientRect();
+      const lampCx = lampRect.left + lampRect.width/2;
+      const lampCy = lampRect.top + lampRect.height/2;
+      const skCx = socketRect.left + socketRect.width/2;
+      const skCy = socketRect.top + socketRect.height/2;
+      const dist = Math.hypot(lampCx - skCx, lampCy - skCy);
+      
+      if (dist < 100){
+        solved = true;
+        clearInterval(timerInterval);
+        endPhaseTimer(currentPhase);
+        
+        // Hide loose lamp and empty socket, show lit lamp
+        lamp.style.display = 'none';
+        emptySocket.style.display = 'none';
+        if(litLamp){
+          litLamp.style.display = 'block';
+          litLamp.classList.add('socket-img','lit');
+        }
+        
+        showToast('Resolvido!');
+        
+        lamp.removeEventListener('mousedown', startDrag);
+        window.removeEventListener('mousemove', moveDrag);
+        window.removeEventListener('mouseup', endDrag);
+        lamp.removeEventListener('touchstart', startDrag);
+        window.removeEventListener('touchmove', moveDrag);
+        window.removeEventListener('touchend', endDrag);
+        
+        // Avança para o primeiro treino (não para os resultados)
+        setTimeout(()=>{
+          if (labScene.parentNode) labScene.remove();
+          if (lamp.parentNode) lamp.remove();
+          startPhase1();
+        }, 1500);
+      }
+    }
+
+    function cleanupPhase0(){
+      if (labScene.parentNode) labScene.remove();
+      if (lamp.parentNode) lamp.remove();
+      lamp.removeEventListener('mousedown', startDrag);
+      window.removeEventListener('mousemove', moveDrag);
+      window.removeEventListener('mouseup', endDrag);
+      lamp.removeEventListener('touchstart', startDrag);
+      window.removeEventListener('touchmove', moveDrag);
+      window.removeEventListener('touchend', endDrag);
+    }
+
+    lamp.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', moveDrag);
+    window.addEventListener('mouseup', endDrag);
+    lamp.addEventListener('touchstart', startDrag, {passive:false});
+    window.addEventListener('touchmove', moveDrag, {passive:false});
+    window.addEventListener('touchend', endDrag);
+  }
+
+  // ============================================================
+  // PHASE 1 — hover yellow lamp image, 20 times
+  // ============================================================
+  function startPhase1(){
+    currentPhase = 'treino1';
+    startPhaseTimer(currentPhase);
+    let score = 0;
+    const target = 20;
+    updateHud('Treino 1', target);
+    scoreEl.textContent = '0';
+
+    const screenArea = window.innerWidth * window.innerHeight;
+    let currentSize = Math.sqrt(screenArea / (4 * Math.PI)) * 2;
+    currentSize = Math.min(currentSize, 400);
+    
+    // Use real yellow lamp image instead of CSS
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_amarela_encaixada.png';
+    lamp.className = 'lamp-target hot';
+    lamp.style.position = 'absolute';
+    lamp.style.transition = 'opacity .2s';
+    lamp.style.zIndex = '15';
+    stage.appendChild(lamp);
+
+    let prevX = null, prevY = null;
+    const minDistance = 378;
+
+    function place(){
+      lamp.style.width = currentSize + 'px';
+      lamp.style.height = 'auto';
+      
+      const p = randPosWithMinDistance(currentSize, currentSize, prevX, prevY, minDistance);
+      lamp.style.left = p.x + 'px';
+      lamp.style.top = p.y + 'px';
+      
+      prevX = p.x;
+      prevY = p.y;
+    }
+    place();
+
+    let armed = true;
+    lamp.addEventListener('mouseenter', ()=>{
+      if (!armed) return;
+      armed = false;
+      score++;
+      scoreEl.textContent = score;
+      
+      const rect = lamp.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      showReward(cx, cy);
+      
+      if (score >= target){
+        endPhaseTimer(currentPhase);
+        lamp.remove();
+        setTimeout(startPhase2, 700);
+      } else {
+        if (score % 3 === 0){
+          currentSize = currentSize * 0.7;
+        }
+        lamp.style.opacity = '0';
+        setTimeout(()=>{
+          place();
+          lamp.style.opacity = '1';
+          armed = true;
+        }, 150);
+      }
+    });
+  }
+
+  // ============================================================
+  // PHASE 2 — click green button, 20 times
+  // ============================================================
+  function startPhase2(){
+    currentPhase = 'treino2';
+    startPhaseTimer(currentPhase);
+    let score = 0;
+    const target = 20;
+    updateHud('Treino 2', target);
+    scoreEl.textContent = '0';
+
+    const btn = document.createElement('button');
+    btn.id = 'greenBtn';
+    btn.textContent = '';
+    btn.style.width = '90px';
+    btn.style.height = '90px';
+    stage.appendChild(btn);
+
+    let prevX = null, prevY = null;
+    const minDistance = 378;
+
+    function place(){
+      const p = randPosWithMinDistance(90, 90, prevX, prevY, minDistance);
+      btn.style.left = p.x + 'px';
+      btn.style.top = p.y + 'px';
+      
+      prevX = p.x;
+      prevY = p.y;
+    }
+    place();
+
+    btn.addEventListener('click', (e)=>{
+      score++;
+      scoreEl.textContent = score;
+      
+      const rect = btn.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      showReward(cx, cy);
+      
+      if (score >= target){
+        endPhaseTimer(currentPhase);
+        btn.remove();
+        setTimeout(startTest, 700);
+      } else {
+        place();
+      }
+    });
+  }
+
+  // ============================================================
+  // TEST — drag green lamp to socket
+  // ============================================================
+  function startTest(){
+    currentPhase = 'teste_final';
+    startPhaseTimer(currentPhase);
+    updateHud('Teste', '✔');
+    scoreEl.textContent = '—';
+
+    const labScene = createLabScene();
+    stage.appendChild(labScene);
+
+    // Hide the lit lamp, show empty socket
+    const litLamp = labScene.querySelector('#lit-lamp');
+    const emptySocket = labScene.querySelector('#empty-socket');
+    if(litLamp) litLamp.style.display = 'none';
+    if(emptySocket){
+      emptySocket.style.display = 'block';
+      emptySocket.classList.add('socket-img');
+    }
+
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_verde_so_cabeca.jpeg';
+    lamp.className = 'lamp-img draggable';
+    lamp.style.width = '100px';
+    lamp.style.height = 'auto';
+    lamp.onerror = function(){ console.error('ERRO: lamp_verde_so_cabeca.jpeg não carregou (teste)'); };
+    lamp.onload = function(){ console.log('✓ lamp_verde_so_cabeca.jpeg carregada (teste)'); };
+    const lampStart = randLampStart();
+    lamp.style.left = lampStart.x + 'px';
+    lamp.style.top = lampStart.y + 'px';
+    stage.appendChild(lamp);
+
+    let dragging = false, offX = 0, offY = 0;
+
+    function pointer(e){
+      return e.touches ? e.touches[0] : e;
+    }
+    function startDrag(e){
+      dragging = true;
+      lamp.classList.add('grabbing');
+      const p = pointer(e);
+      const rect = lamp.getBoundingClientRect();
+      offX = p.clientX - rect.left;
+      offY = p.clientY - rect.top;
+      e.preventDefault();
+    }
+    function moveDrag(e){
+      if (!dragging) return;
+      const p = pointer(e);
+      lamp.style.left = (p.clientX - offX) + 'px';
+      lamp.style.top = (p.clientY - offY) + 'px';
+    }
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      lamp.classList.remove('grabbing');
+      
+      if(!emptySocket) return;
+      
+      const lampRect = lamp.getBoundingClientRect();
+      const socketRect = emptySocket.getBoundingClientRect();
+      const lampCx = lampRect.left + lampRect.width/2;
+      const lampCy = lampRect.top + lampRect.height/2;
+      const skCx = socketRect.left + socketRect.width/2;
+      const skCy = socketRect.top + socketRect.height/2;
+      const dist = Math.hypot(lampCx - skCx, lampCy - skCy);
+      
+      if (dist < 100){
+        // Remove listeners para não deixar handlers órfãos no window
+        lamp.removeEventListener('mousedown', startDrag);
+        window.removeEventListener('mousemove', moveDrag);
+        window.removeEventListener('mouseup', endDrag);
+        lamp.removeEventListener('touchstart', startDrag);
+        window.removeEventListener('touchmove', moveDrag);
+        window.removeEventListener('touchend', endDrag);
+        solveTest(lamp, emptySocket, litLamp);
+      }
+    }
+
+    lamp.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', moveDrag);
+    window.addEventListener('mouseup', endDrag);
+    lamp.addEventListener('touchstart', startDrag, {passive:false});
+    window.addEventListener('touchmove', moveDrag, {passive:false});
+    window.addEventListener('touchend', endDrag);
+  }
+
+  function solveTest(lamp, emptySocket, litLamp){
+    endPhaseTimer('teste_final');
+    
+    // Hide loose lamp and empty socket, show lit lamp
+    lamp.style.display = 'none';
+    if(emptySocket) emptySocket.style.display = 'none';
+    if(litLamp){
+      litLamp.style.display = 'block';
+      litLamp.classList.add('socket-img','lit');
+    }
+    
+    showToast('Resolvido!');
+    setTimeout(showResults, 900);
+  }
+
+  // ============================================================
+  // RESULTS
+  // ============================================================
+  function showResults(){
+    currentPhase = 'fim';
+    hud.classList.add('hidden');
+
+    const totalTime = elapsed();
+    const totalClicks = log.clicks.length;
+
+    document.getElementById('rTotalClicks').textContent = totalClicks;
+    document.getElementById('rTime').textContent = (totalTime/1000).toFixed(1)+'s';
+
+    const phases = ['teste_inicial', 'treino1', 'treino2', 'teste_final'];
+    const phaseNames = {
+      'teste_inicial': 'Pré-treino',
+      'treino1': 'Treino 1 (Lâmpada)',
+      'treino2': 'Treino 2 (Botão)',
+      'teste_final': 'Teste Final'
+    };
+    
+    let clicksHtml = '';
+    for (const p of phases){
+      const count = log.phaseClicks[p] || 0;
+      clicksHtml += `<div><b>${phaseNames[p]}:</b> ${count} cliques</div>`;
+    }
+    document.getElementById('clicksByPhase').innerHTML = clicksHtml;
+
+    let timeHtml = '';
+    for (const p of phases){
+      if (log.phaseTimes[p]){
+        const duration = log.phaseTimes[p].end 
+          ? ((log.phaseTimes[p].end - log.phaseTimes[p].start) / 1000).toFixed(1)
+          : 'incompleto';
+        timeHtml += `<div><b>${phaseNames[p]}:</b> ${duration}s</div>`;
+      } else {
+        timeHtml += `<div><b>${phaseNames[p]}:</b> não realizado</div>`;
+      }
+    }
+    document.getElementById('timeByPhase').innerHTML = timeHtml;
+
+    const heatmapGrid = document.getElementById('heatmapGrid');
+    heatmapGrid.innerHTML = '';
+
+    for (const p of phases){
+      const phaseMoves = log.moves.filter(m => m.phase === p);
+      const phaseClicks = log.clicks.filter(c => c.phase === p);
+      
+      if (phaseMoves.length === 0 && phaseClicks.length === 0) continue;
+
+      const canvas = document.createElement('canvas');
+      const tw = 320, th = Math.round(320 * (window.innerHeight/window.innerWidth));
+      canvas.width = tw; canvas.height = th;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#101022';
+      ctx.fillRect(0,0,tw,th);
+      
+      const sx = tw/window.innerWidth, sy = th/window.innerHeight;
+      
+      for (const m of phaseMoves){
+        const x = m.x*sx, y = m.y*sy, r = 12;
+        const g = ctx.createRadialGradient(x,y,0,x,y,r);
+        g.addColorStop(0,'rgba(245,166,35,0.12)');
+        g.addColorStop(1,'rgba(245,166,35,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      }
+      
+      for (const c of phaseClicks){
+        ctx.fillStyle = 'rgba(46,194,126,0.9)';
+        ctx.beginPath(); ctx.arc(c.x*sx, c.y*sy, 3, 0, Math.PI*2); ctx.fill();
+      }
+
+      const item = document.createElement('div');
+      item.className = 'heatmap-item';
+      item.innerHTML = `<div class="label">${phaseNames[p]}</div>`;
+      item.appendChild(canvas);
+      heatmapGrid.appendChild(item);
+    }
+
+    results.classList.remove('hidden');
+  }
+
+  // ---------- CSV export ----------
+  function downloadCSV(){
+    let rows = ['type,t_ms,x,y,phase'];
+    for (const m of log.moves) rows.push(`move,${m.t},${m.x},${m.y},${m.phase}`);
+    for (const c of log.clicks) rows.push(`click,${c.t},${c.x},${c.y},${c.phase}`);
+    const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'dados_experimento.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- Boot ----------
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    overlay.classList.add('hidden');
+    hud.classList.remove('hidden');
+    experimentStart = now();
+    startPhase0();
+  });
+  document.getElementById('downloadBtn').addEventListener('click', downloadCSV);
+  document.getElementById('restartBtn').addEventListener('click', ()=>location.reload());
+
+})();
+</script>
+</body>
+</html>
