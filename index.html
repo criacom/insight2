@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tarefa Experimental — Lâmpada</title>
+<style>
+  :root{
+    --ink:#1a1a2e;
+    --paper:#f4f1e8;
+    --amber:#f5a623;
+    --amber-glow:#ffd166;
+    --green:#55a729;
+    --green-dark:#346719;
+    --line:#3a3a5c;
+    --muted:#6b6b80;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:'Courier New',Courier,monospace;
+    background:#111;
+    color:var(--ink);
+    overflow:hidden;
+    width:100vw;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:0;padding:0;
+  }
+  /* Stage limitado ao aspect ratio da bancada 1448x1086 */
+  #stage{
+    position:relative;
+    width: min(100vw, calc(100vh * 1448 / 1086));
+    height: min(100vh, calc(100vw * 1086 / 1448));
+    cursor:crosshair;
+    background:#111;
+    overflow:hidden;
+    flex-shrink:0;
+  }
+  /* Background workbench - cobre exatamente o stage */
+  .workbench-bg{
+    position:absolute;
+    top:0; left:0;
+    width:100%;
+    height:100%;
+    object-fit:fill;
+    pointer-events:none;
+    z-index:1;
+    display:block;
+  }
+
+  /* Imagens com transparência real (PNG com alpha) */
+  
+  /* Lab items positioned on bench */
+  .lab-item{
+    position:absolute;
+    pointer-events:all;
+    z-index:5;
+    transition:transform 0.1s;
+  }
+  .lab-item:hover{
+    transform:scale(1.05);
+  }
+  .lab-item.is-draggable{
+    cursor:grab;
+  }
+  .lab-item.is-grabbing{
+    cursor:grabbing;
+    transition:none;
+    z-index:25;
+  }
+  
+  /* HUD */
+  #hud{
+    position:absolute;
+    top:14px;left:14px;
+    z-index:50;
+    background:var(--ink);
+    color:var(--paper);
+    padding:14px 18px;
+    border-radius:4px;
+    border:2px solid var(--line);
+    font-size:13px;
+    line-height:1.7;
+    box-shadow:6px 6px 0 rgba(26,26,46,.25);
+    min-width:210px;
+  }
+  #hud .phase-name{
+    font-size:15px;font-weight:bold;letter-spacing:1px;
+    color:var(--amber-glow);text-transform:uppercase;
+    border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:6px;
+  }
+  #hud .row{display:flex;justify-content:space-between;gap:18px;}
+  #hud .row b{color:var(--green);}
+
+  /* Training lamp - CSS (yellow flickering) */
+  .lamp-target{
+    position:absolute;
+    width:90px;height:90px;
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity .2s;
+    z-index:15;
+  }
+  .bulb{
+    width:54px;height:70px;position:relative;
+  }
+  .bulb .glass{
+    width:54px;height:54px;border-radius:50% 50% 50% 50%/55% 55% 45% 45%;
+    background:radial-gradient(circle at 35% 30%, var(--amber-glow), var(--amber) 70%);
+    box-shadow:0 0 28px 8px rgba(245,166,35,.7), inset -4px -6px 10px rgba(180,110,0,.4);
+    position:absolute;top:0;left:0;
+    animation:flicker 2.4s infinite;
+  }
+  .bulb .base{
+    width:26px;height:20px;background:#8a8a8a;
+    border-radius:2px;position:absolute;bottom:0;left:14px;
+    background-image:repeating-linear-gradient(0deg,#9a9a9a 0 3px,#6a6a6a 3px 6px);
+  }
+  @keyframes flicker{
+    0%,100%{opacity:1}48%{opacity:.92}50%{opacity:.78}52%{opacity:.95}
+  }
+  .lamp-target.hot{outline:3px dashed rgba(245,166,35,.5);outline-offset:6px;border-radius:50%;}
+
+  /* Green button (phase 2) */
+  #greenBtn{
+    position:absolute;
+    width:90px;height:90px;border-radius:50%;
+    border:4px solid var(--green-dark);
+    background:radial-gradient(circle at 35% 30%, #a1ce89, var(--green) 65%);
+    cursor:pointer;
+    box-shadow:0 8px 0 var(--green-dark), 0 0 22px rgba(85,167,41,.5);
+    color:#ffffff;font-weight:bold;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .06s, box-shadow .06s;
+    user-select:none;
+    z-index:15;
+  }
+  #greenBtn:active{transform:translateY(6px);box-shadow:0 2px 0 var(--green-dark), 0 0 22px rgba(85,167,41,.5);}
+
+  /* Socket and lamp images */
+  .socket-img, .lamp-img{
+    position:absolute;
+    pointer-events:none;
+    z-index:10;
+  }
+  .lamp-img.draggable{
+    pointer-events:auto;
+    cursor:grab;
+    z-index:20;
+  }
+  .lamp-img.draggable.grabbing{cursor:grabbing;}
+  
+  /* Golden glow when lit */
+  .socket-img.lit::after{
+    content:'';
+    position:absolute;
+    inset:-40px;
+    background:radial-gradient(circle at center, rgba(255,215,0,0.5) 0%, rgba(255,215,0,0.3) 40%, transparent 70%);
+    border-radius:50%;
+    animation:golden-pulse 2s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes golden-pulse{
+    0%,100%{opacity:0.7;transform:scale(1);}
+    50%{opacity:1;transform:scale(1.15);}
+  }
+
+  /* Buttons / overlays */
+  .ctrl-btn{
+    font-family:inherit;font-size:15px;font-weight:bold;
+    padding:14px 30px;border:2px solid var(--ink);border-radius:4px;
+    background:var(--amber);color:var(--ink);cursor:pointer;
+    box-shadow:4px 4px 0 var(--ink);transition:transform .08s;
+  }
+  .ctrl-btn:active{transform:translate(4px,4px);box-shadow:0 0 0 var(--ink);}
+  .ctrl-btn.green{background:var(--green);}
+
+  #overlay{
+    position:absolute;inset:0;z-index:100;
+    background:rgba(26,26,46,.92);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;padding:30px;
+  }
+  #overlay .card{
+    background:var(--paper);border:3px solid var(--amber);
+    border-radius:8px;padding:40px;max-width:560px;
+    box-shadow:10px 10px 0 rgba(245,166,35,.3);
+  }
+  #overlay h1{font-size:26px;margin-bottom:14px;letter-spacing:1px;}
+  #overlay p{font-size:15px;line-height:1.7;color:var(--ink);margin-bottom:14px;text-align:left;}
+  .hidden{display:none!important;}
+
+  /* Heatmap canvas - hidden during experiment */
+  #heatmap{position:absolute;inset:0;z-index:5;pointer-events:none;display:none;}
+
+  /* Results */
+  #results{
+    position:absolute;inset:0;z-index:100;
+    background:rgba(26,26,46,.92);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;padding:30px;
+    overflow-y:auto;
+  }
+  #results .card{
+    max-width:900px;
+    background:var(--paper);
+    border:3px solid var(--green);
+    border-radius:8px;
+    padding:40px;
+    box-shadow:10px 10px 0 rgba(46,194,126,.3);
+  }
+  #results h1{color:var(--green-dark);}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0;}
+  .stat-box{background:var(--ink);color:var(--paper);padding:14px;border-radius:4px;}
+  .stat-box .num{font-size:28px;color:var(--amber-glow);font-weight:bold;}
+  .stat-box .lbl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+  .phase-section{margin:24px 0;border-top:2px solid var(--line);padding-top:18px;}
+  .phase-section h3{font-size:16px;margin-bottom:10px;color:var(--ink);text-transform:uppercase;letter-spacing:1px;}
+  .heatmap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0;}
+  .heatmap-item{border:2px solid var(--ink);border-radius:4px;overflow:hidden;background:#101022;}
+  .heatmap-item canvas{display:block;width:100%;height:auto;}
+  .heatmap-item .label{background:var(--ink);color:var(--paper);padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;}
+  .small{font-size:12px;color:var(--muted);}
+  
+  .toast{
+    position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--green-dark);color:#fff;padding:12px 22px;border-radius:30px;
+    font-weight:bold;z-index:60;opacity:0;transition:opacity .3s;
+  }
+  .toast.show{opacity:1;}
+
+  /* Reward animations */
+  @keyframes sparkle-burst{
+    0%{transform:translate(-50%,-50%) scale(0) rotate(0deg);opacity:1;}
+    100%{transform:translate(-50%,-50%) scale(2.5) rotate(180deg);opacity:0;}
+  }
+  @keyframes big-pop{
+    0%{transform:translate(-50%,-50%) scale(0);opacity:1;}
+    50%{transform:translate(-50%,-50%) scale(1.4);}
+    100%{transform:translate(-50%,-50%) scale(1) rotate(15deg);opacity:0;}
+  }
+  .sparkle{
+    position:absolute;
+    font-size:40px;
+    pointer-events:none;
+    z-index:80;
+    animation:sparkle-burst 0.8s ease-out forwards;
+  }
+  .big-reward{
+    position:absolute;
+    font-size:120px;
+    font-weight:bold;
+    color:var(--amber);
+    text-shadow:0 0 20px rgba(245,166,35,0.8), 
+                0 0 40px rgba(245,166,35,0.6),
+                3px 3px 0 var(--ink);
+    pointer-events:none;
+    z-index:90;
+    animation:big-pop 1s ease-out forwards;
+    font-family:'Courier New',Courier,monospace;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="heatmap"></canvas>
+
+  <div id="hud" class="hidden">
+    <div class="phase-name" id="phaseName">—</div>
+    <div class="row"><span>Pontos</span><b id="score">0</b></div>
+    <div class="row"><span>Meta</span><span id="goal">5</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- Welcome overlay -->
+<div id="overlay">
+  <div class="card">
+    <h1>💡 Tarefa Experimental</h1>
+    <p>Você irá realizar uma tarefa interativa. Descubra o que fazer observando a tela.</p>
+    <p class="small">Ao final você verá os dados registrados durante o experimento.</p>
+    <button class="ctrl-btn" id="startBtn">Começar</button>
+  </div>
+</div>
+
+<!-- Results overlay -->
+<div id="results" class="hidden">
+  <div class="card">
+    <h1>🎉 Experimento Concluído</h1>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" id="rTotalClicks">0</div><div class="lbl">Cliques totais</div></div>
+      <div class="stat-box"><div class="num" id="rTime">0s</div><div class="lbl">Tempo total</div></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>📊 Cliques por Fase</h3>
+      <div id="clicksByPhase" style="font-size:13px;line-height:1.8;"></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>⏱️ Tempo de Solução por Fase</h3>
+      <div id="timeByPhase" style="font-size:13px;line-height:1.8;"></div>
+    </div>
+
+    <div class="phase-section">
+      <h3>🗺️ Mapas de Calor por Fase</h3>
+      <div class="heatmap-grid" id="heatmapGrid"></div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:30px;">
+      <button class="ctrl-btn green" id="downloadBtn">Baixar dados (CSV)</button>
+      <button class="ctrl-btn" id="restartBtn">Refazer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Elements ----------
+  const stage = document.getElementById('stage');
+  function stageW(){ return stage.offsetWidth; }
+  let lampSlotPct = null; // slot % sorteado para a lamp_verde_so_cabeca
+  function stageH(){ return stage.offsetHeight; }
+  function stageRect(){ return stage.getBoundingClientRect(); }
+  function relX(clientX){ return clientX - stageRect().left; }
+  function relY(clientY){ return clientY - stageRect().top; }
+  const hud = document.getElementById('hud');
+  const phaseName = document.getElementById('phaseName');
+  const scoreEl = document.getElementById('score');
+  const goalEl = document.getElementById('goal');
+  const overlay = document.getElementById('overlay');
+  const results = document.getElementById('results');
+  const toast = document.getElementById('toast');
+  const heatmap = document.getElementById('heatmap');
+  const hctx = heatmap.getContext('2d');
+
+  // ---------- Data logging ----------
+  const log = {
+    moves: [],
+    clicks: [],
+    phaseClicks: {},
+    phaseTimes: {}
+  };
+  let experimentStart = 0;
+
+  function now(){ return performance.now(); }
+  function elapsed(){ return now() - experimentStart; }
+
+  function startPhaseTimer(phase){
+    log.phaseTimes[phase] = {start: elapsed(), end: null};
+  }
+  function endPhaseTimer(phase){
+    if (log.phaseTimes[phase]) log.phaseTimes[phase].end = elapsed();
+  }
+  function recordClick(phase){
+    if (!log.phaseClicks[phase]) log.phaseClicks[phase] = 0;
+    log.phaseClicks[phase]++;
+  }
+
+  // ---------- Heatmap (drawn only in results) ----------
+  function sizeCanvas(){
+    heatmap.width = stageW();
+    heatmap.height = stageH();
+  }
+  sizeCanvas();
+  window.addEventListener('resize', sizeCanvas);
+
+  // ---------- Global mouse tracking ----------
+  let lastMoveLog = 0;
+  let currentPhase = 'idle';
+
+  stage.addEventListener('mousemove', e=>{
+    const t = elapsed();
+    if (t - lastMoveLog > 50){
+      log.moves.push({t:Math.round(t), x:relX(e.clientX), y:relY(e.clientY), phase:currentPhase});
+      lastMoveLog = t;
+    }
+  });
+  stage.addEventListener('mousedown', e=>{
+    log.clicks.push({t:Math.round(elapsed()), x:relX(e.clientX), y:relY(e.clientY), phase:currentPhase});
+    recordClick(currentPhase);
+  });
+  stage.addEventListener('touchmove', e=>{
+    const tch = e.touches[0]; if(!tch) return;
+    const t = elapsed();
+    if (t - lastMoveLog > 50){
+      log.moves.push({t:Math.round(t), x:relX(tch.clientX), y:relY(tch.clientY), phase:currentPhase});
+      lastMoveLog = t;
+    }
+  }, {passive:true});
+
+  // ---------- Helpers ----------
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'), 1200);
+  }
+  function showReward(clientX, clientY){
+    const rx = relX(clientX), ry = relY(clientY);
+    const bigText = document.createElement('div');
+    bigText.className = 'big-reward';
+    bigText.textContent = '+1';
+    bigText.style.left = rx + 'px';
+    bigText.style.top = ry + 'px';
+    stage.appendChild(bigText);
+    setTimeout(()=>bigText.remove(), 1000);
+
+    const emojis = ['✨','⭐','💥','🌟','✨','⚡','💫'];
+    for (let i=0; i<8; i++){
+      const sparkle = document.createElement('div');
+      sparkle.className = 'sparkle';
+      sparkle.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 60 + Math.random()*40;
+      sparkle.style.left = (rx + Math.cos(angle)*dist) + 'px';
+      sparkle.style.top = (ry + Math.sin(angle)*dist) + 'px';
+      stage.appendChild(sparkle);
+      setTimeout(()=>sparkle.remove(), 800);
+    }
+  }
+  function randPos(w, h){
+    const pad = 80;
+    const x = pad + Math.random()*(stageW() - w - pad*2);
+    const y = pad + 120 + Math.random()*(stageH() - h - pad*2 - 120);
+    return {x, y};
+  }
+  function randPosWithMinDistance(w, h, prevX, prevY, minDist){
+    const pad = 80;
+    let x, y, attempts = 0;
+    const maxAttempts = 100;
+    
+    do {
+      x = pad + Math.random()*(stageW() - w - pad*2);
+      y = pad + 120 + Math.random()*(stageH() - h - pad*2 - 120);
+      attempts++;
+      
+      if (prevX === null || prevY === null) break;
+      
+      const dist = Math.hypot(x - prevX, y - prevY);
+      if (dist >= minDist) break;
+      
+    } while (attempts < maxAttempts);
+    
+    return {x, y};
+  }
+  function randLampStart(){
+    const screenW = stageW();
+    const screenH = stageH();
+    const margin = 100;
+    
+    const x = margin + Math.random()*(screenW * 0.5 - margin);
+    const y = margin + Math.random()*(screenH * 0.4);
+    
+    return {x, y};
+  }
+  function updateHud(name, goal){
+    phaseName.textContent = name;
+    goalEl.textContent = goal;
+  }
+
+  // ---------- Arrastar item livremente (sem mudar posição inicial) ----------
+  function enableDrag(el){
+    el.classList.add('is-draggable');
+    let dragging = false, offX = 0, offY = 0;
+
+    function getPoint(e){ return e.touches && e.touches[0] ? e.touches[0] : e; }
+
+    function onStart(e){
+      const p = getPoint(e);
+      const rect = el.getBoundingClientRect();
+      offX = p.clientX - rect.left;
+      offY = p.clientY - rect.top;
+      dragging = true;
+      el.classList.add('is-grabbing');
+      // não usar stopPropagation: o log do experimento continua funcionando
+      if(e.cancelable) e.preventDefault();
+    }
+    function onMove(e){
+      if(!dragging) return;
+      const p = getPoint(e);
+      const x = relX(p.clientX) - offX;
+      const y = relY(p.clientY) - offY;
+      el.style.left = (x / stageW() * 100) + '%';
+      el.style.top  = (y / stageH() * 100) + '%';
+      if(e.cancelable) e.preventDefault();
+    }
+    function onEnd(){
+      if(!dragging) return;
+      dragging = false;
+      el.classList.remove('is-grabbing');
+    }
+
+    el.addEventListener('mousedown', onStart);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    el.addEventListener('touchstart', onStart, {passive:false});
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('touchend', onEnd);
+  }
+
+  // ---------- Lab scene with positioned transparent items ----------
+  function createLabScene(){
+    const scene = document.createElement('div');
+    scene.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;';
+    scene.id = 'labScene';
+    
+    // Background workbench WITHOUT items (empty bench)
+    const bg = document.createElement('img');
+    bg.src = 'bck.png';
+    bg.className = 'workbench-bg';
+    bg.onerror = function(){ console.error('ERRO: bck.png não carregou'); };
+    bg.onload = function(){ console.log('✓ bck.png carregada'); };
+    scene.appendChild(bg);
+    
+    // ---- Todos os slots rosas (receptor + itens usam os mesmos pontos) ----
+    // Remapeado de bck_locais.png (1448x1086) — 18 pontos rosas
+    const SLOTS = [
+      [10.6, 55.7], [35.2, 56.4], [52.1, 56.7], [68.2, 56.6],
+      [91.5, 55.8], [22.3, 57.4], [79.6, 57.6], [43.0, 63.6],
+      [86.9, 63.7], [28.2, 64.8], [58.1, 65.3], [68.4, 67.6],
+      [53.0, 71.5], [77.8, 70.9], [23.5, 72.3], [39.7, 71.8],
+      [63.0, 73.8], [94.5, 72.9]
+    ];
+
+    // Embaralhar slots
+    function shuffle(arr){ return [...arr].sort(()=>Math.random()-0.5); }
+
+    // Catálogo de itens distratores (+15% nos tamanhos: 7→8.05, 8→9.2, 9→10.35, 10→11.5)
+    const CATALOG = [
+      {src:'05_becker_liquido_azul.png',          w:8.1},
+      {src:'06_balao_liquido_roxo.png',            w:8.1},
+      {src:'07_suporte_tubos_ensaio.png',          w:9.2},
+      {src:'08_livros_antigos.png',                w:9.2},
+      {src:'09_microscopio_steampunk.png',         w:10.35},
+      {src:'10_maquina_medidor_engrenagem.png',    w:10.35},
+      {src:'05_becker_liquido_azul.png',           w:8.1},
+      {src:'06_balao_liquido_roxo.png',            w:8.1},
+      {src:'07_suporte_tubos_ensaio.png',          w:9.2},
+      {src:'08_livros_antigos.png',                w:9.2},
+      {src:'09_microscopio_steampunk.png',         w:10.35},
+      {src:'10_maquina_medidor_engrenagem.png',    w:10.35},
+      {src:'05_becker_liquido_azul.png',           w:8.1},
+      {src:'06_balao_liquido_roxo.png',            w:8.1},
+      {src:'07_suporte_tubos_ensaio.png',          w:9.2},
+      {src:'09_microscopio_steampunk.png',         w:10.35},
+      {src:'10_maquina_medidor_engrenagem.png',    w:10.35},
+    ];
+
+    // Posicionar item centralizado no slot (% da imagem)
+    function placeImgAtSlot(src, slot, wPct, id, hidden){
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'lab-item';
+      if(id) img.id = id;
+      img.style.width = wPct + '%';
+      img.style.height = 'auto';
+      img.style.left = (slot[0] - wPct / 2) + '%';
+      img.style.top = 'calc(' + slot[1] + '% - ' + (wPct * 0.6) + '%)';
+      img.style.position = 'absolute';
+      img.style.zIndex = '5';
+      if(hidden) img.style.display = 'none';
+      img.onerror = ()=> console.error('ERRO:', src);
+      img.onload  = ()=> console.log('✓', src);
+      scene.appendChild(img);
+      return img;
+    }
+
+    // Embaralhar todos os 18 slots
+    // slot 0 → receptor; slot 1 → lâmpada solta; slots 2..17 → distratores
+    const shuffledSlots = shuffle([...SLOTS]);
+    const socketSlot  = shuffledSlots[0];
+    const lampSlot    = shuffledSlots[1];   // slot da lâmpada solta (draggable)
+    const decorSlots  = shuffledSlots.slice(2);
+
+    // Guardar slot da lâmpada solta em variável global (para posicionar fora desta função)
+    lampSlotPct = lampSlot;
+
+    // Receptor no slot sorteado (lâmpada encaixada + encaixe vazio sobrepostos)
+    placeImgAtSlot('lamp_verde_encaixada.png', socketSlot, 11.5);
+    placeImgAtSlot('encaixe.png',              socketSlot, 9.2, 'empty-socket', true);
+
+    // Distratores nos 16 slots restantes — posição inicial intacta, mas arrastáveis
+    const shuffledItems = shuffle([...CATALOG]);
+    decorSlots.forEach((slot, i) => {
+      const item = shuffledItems[i % shuffledItems.length];
+      const img = placeImgAtSlot(item.src, slot, item.w);
+      enableDrag(img);
+    });
+    
+    return scene;
+  }
+
+  // ============================================================
+  // PHASE 0 — initial test (10 seconds)
+  // ============================================================
+  function startPhase0(){
+    currentPhase = 'teste_inicial';
+    startPhaseTimer(currentPhase);
+    updateHud('Tarefa', '10s');
+    scoreEl.textContent = '—';
+
+    let timerSeconds = 10;
+    const timerInterval = setInterval(()=>{
+      timerSeconds--;
+      goalEl.textContent = timerSeconds + 's';
+      if (timerSeconds <= 0){
+        clearInterval(timerInterval);
+        endPhaseTimer(currentPhase);
+        cleanupPhase0();
+        setTimeout(startPhase1, 700);
+      }
+    }, 1000);
+
+    const labScene = createLabScene();
+    stage.appendChild(labScene);
+
+    // Hide the lit lamp, show empty socket
+    const litLamp = labScene.querySelector('img[src="lamp_verde_encaixada.png"]');
+    const emptySocket = labScene.querySelector('#empty-socket');
+    if(litLamp) litLamp.style.display = 'none';
+    if(emptySocket){
+      emptySocket.style.display = 'block';
+      emptySocket.classList.add('socket-img');
+    }
+
+    // Create draggable green lamp bulb
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_verde_so_cabeca.png';
+    lamp.className = 'lamp-img draggable';
+    lamp.style.width = '9.2%';
+    lamp.style.height = 'auto';
+    lamp.onerror = function(){ console.error('ERRO: lamp_verde_so_cabeca.png não carregou'); };
+    lamp.onload = function(){ console.log('✓ lamp_verde_so_cabeca.png carregada'); };
+    // Posicionar no slot sorteado (em %, centrado no ponto)
+    lamp.style.left = (lampSlotPct[0] - 4.6) + '%';
+    lamp.style.top  = 'calc(' + lampSlotPct[1] + '% - 5.5%)';
+    stage.appendChild(lamp);
+
+    let dragging = false, offX = 0, offY = 0;
+    let solved = false;
+
+    function pointer(e){
+      return e.touches ? e.touches[0] : e;
+    }
+    function startDrag(e){
+      dragging = true;
+      lamp.classList.add('grabbing');
+      const p = pointer(e);
+      const rect = lamp.getBoundingClientRect();
+      offX = p.clientX - rect.left;
+      offY = p.clientY - rect.top;
+      e.preventDefault();
+    }
+    function moveDrag(e){
+      if (!dragging) return;
+      const p = pointer(e);
+      lamp.style.left = (relX(p.clientX) - offX) + 'px';
+      lamp.style.top = (relY(p.clientY) - offY) + 'px';
+    }
+    function endDrag(){
+      if (!dragging || solved) return;
+      dragging = false;
+      lamp.classList.remove('grabbing');
+      
+      if(!emptySocket) return;
+      
+      const lampRect = lamp.getBoundingClientRect();
+      const socketRect = emptySocket.getBoundingClientRect();
+      const lampCx = lampRect.left + lampRect.width/2;
+      const lampCy = lampRect.top + lampRect.height/2;
+      const skCx = socketRect.left + socketRect.width/2;
+      const skCy = socketRect.top + socketRect.height/2;
+      const dist = Math.hypot(lampCx - skCx, lampCy - skCy);
+      
+      if (dist < 100){
+        solved = true;
+        clearInterval(timerInterval);
+        endPhaseTimer(currentPhase);
+        
+        // Hide loose lamp and empty socket, show lit lamp
+        lamp.style.display = 'none';
+        emptySocket.style.display = 'none';
+        if(litLamp){
+          litLamp.style.display = 'block';
+          litLamp.classList.add('socket-img','lit');
+        }
+        
+        showToast('Resolvido!');
+        
+        lamp.removeEventListener('mousedown', startDrag);
+        window.removeEventListener('mousemove', moveDrag);
+        window.removeEventListener('mouseup', endDrag);
+        lamp.removeEventListener('touchstart', startDrag);
+        window.removeEventListener('touchmove', moveDrag);
+        window.removeEventListener('touchend', endDrag);
+        
+        setTimeout(showResults, 1500);
+      }
+    }
+
+    function cleanupPhase0(){
+      if (labScene.parentNode) labScene.remove();
+      if (lamp.parentNode) lamp.remove();
+      lamp.removeEventListener('mousedown', startDrag);
+      window.removeEventListener('mousemove', moveDrag);
+      window.removeEventListener('mouseup', endDrag);
+      lamp.removeEventListener('touchstart', startDrag);
+      window.removeEventListener('touchmove', moveDrag);
+      window.removeEventListener('touchend', endDrag);
+    }
+
+    lamp.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', moveDrag);
+    window.addEventListener('mouseup', endDrag);
+    lamp.addEventListener('touchstart', startDrag, {passive:false});
+    window.addEventListener('touchmove', moveDrag, {passive:false});
+    window.addEventListener('touchend', endDrag);
+  }
+
+  // ============================================================
+  // PHASE 1 — hover yellow lamp image, 20 times
+  // ============================================================
+  function startPhase1(){
+    currentPhase = 'treino1';
+    startPhaseTimer(currentPhase);
+    let score = 0;
+    const target = 20;
+    updateHud('Treino 1', target);
+    scoreEl.textContent = '0';
+
+    const screenArea = stageW() * stageH();
+    let currentSize = Math.sqrt(screenArea / (4 * Math.PI)) * 2;
+    currentSize = Math.min(currentSize, 400);
+    
+    // Use real yellow lamp image instead of CSS
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_amarela_encaixada.png';
+    lamp.className = 'lamp-target hot';
+    lamp.style.position = 'absolute';
+    lamp.style.transition = 'opacity .2s';
+    lamp.style.zIndex = '15';
+    stage.appendChild(lamp);
+
+    let prevX = null, prevY = null;
+    const minDistance = 378;
+
+    function place(){
+      lamp.style.width = currentSize + 'px';
+      lamp.style.height = 'auto';
+      
+      const p = randPosWithMinDistance(currentSize, currentSize, prevX, prevY, minDistance);
+      lamp.style.left = p.x + 'px';
+      lamp.style.top = p.y + 'px';
+      
+      prevX = p.x;
+      prevY = p.y;
+    }
+    place();
+
+    let armed = true;
+    lamp.addEventListener('mouseenter', ()=>{
+      if (!armed) return;
+      armed = false;
+      score++;
+      scoreEl.textContent = score;
+      
+      const rect = lamp.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      showReward(cx, cy);
+      
+      if (score >= target){
+        endPhaseTimer(currentPhase);
+        lamp.remove();
+        setTimeout(startPhase2, 700);
+      } else {
+        if (score % 3 === 0){
+          currentSize = currentSize * 0.7;
+        }
+        lamp.style.opacity = '0';
+        setTimeout(()=>{
+          place();
+          lamp.style.opacity = '1';
+          armed = true;
+        }, 150);
+      }
+    });
+  }
+
+  // ============================================================
+  // PHASE 2 — click green button, 20 times
+  // ============================================================
+  function startPhase2(){
+    currentPhase = 'treino2';
+    startPhaseTimer(currentPhase);
+    let score = 0;
+    const target = 20;
+    updateHud('Treino 2', target);
+    scoreEl.textContent = '0';
+
+    const btn = document.createElement('button');
+    btn.id = 'greenBtn';
+    btn.textContent = '';
+    btn.style.width = '90px';
+    btn.style.height = '90px';
+    stage.appendChild(btn);
+
+    let prevX = null, prevY = null;
+    const minDistance = 378;
+
+    function place(){
+      const p = randPosWithMinDistance(90, 90, prevX, prevY, minDistance);
+      btn.style.left = p.x + 'px';
+      btn.style.top = p.y + 'px';
+      
+      prevX = p.x;
+      prevY = p.y;
+    }
+    place();
+
+    btn.addEventListener('click', (e)=>{
+      score++;
+      scoreEl.textContent = score;
+      
+      const rect = btn.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      showReward(cx, cy);
+      
+      if (score >= target){
+        endPhaseTimer(currentPhase);
+        btn.remove();
+        setTimeout(startTest, 700);
+      } else {
+        place();
+      }
+    });
+  }
+
+  // ============================================================
+  // TEST — drag green lamp to socket
+  // ============================================================
+  function startTest(){
+    currentPhase = 'teste_final';
+    startPhaseTimer(currentPhase);
+    updateHud('Teste', '✔');
+    scoreEl.textContent = '—';
+
+    const labScene = createLabScene();
+    stage.appendChild(labScene);
+
+    // Hide the lit lamp, show empty socket
+    const litLamp = labScene.querySelector('img[src="lamp_verde_encaixada.png"]');
+    const emptySocket = labScene.querySelector('#empty-socket');
+    if(litLamp) litLamp.style.display = 'none';
+    if(emptySocket){
+      emptySocket.style.display = 'block';
+      emptySocket.classList.add('socket-img');
+    }
+
+    const lamp = document.createElement('img');
+    lamp.src = 'lamp_verde_so_cabeca.png';
+    lamp.className = 'lamp-img draggable';
+    lamp.style.width = '9.2%';
+    lamp.style.height = 'auto';
+    lamp.onerror = function(){ console.error('ERRO: lamp_verde_so_cabeca.png não carregou (teste)'); };
+    lamp.onload = function(){ console.log('✓ lamp_verde_so_cabeca.png carregada (teste)'); };
+    lamp.style.left = (lampSlotPct[0] - 4.6) + '%';
+    lamp.style.top  = 'calc(' + lampSlotPct[1] + '% - 5.5%)';
+    stage.appendChild(lamp);
+
+    let dragging = false, offX = 0, offY = 0;
+
+    function pointer(e){
+      return e.touches ? e.touches[0] : e;
+    }
+    function startDrag(e){
+      dragging = true;
+      lamp.classList.add('grabbing');
+      const p = pointer(e);
+      const rect = lamp.getBoundingClientRect();
+      offX = p.clientX - rect.left;
+      offY = p.clientY - rect.top;
+      e.preventDefault();
+    }
+    function moveDrag(e){
+      if (!dragging) return;
+      const p = pointer(e);
+      lamp.style.left = (relX(p.clientX) - offX) + 'px';
+      lamp.style.top = (relY(p.clientY) - offY) + 'px';
+    }
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      lamp.classList.remove('grabbing');
+      
+      if(!emptySocket) return;
+      
+      const lampRect = lamp.getBoundingClientRect();
+      const socketRect = emptySocket.getBoundingClientRect();
+      const lampCx = lampRect.left + lampRect.width/2;
+      const lampCy = lampRect.top + lampRect.height/2;
+      const skCx = socketRect.left + socketRect.width/2;
+      const skCy = socketRect.top + socketRect.height/2;
+      const dist = Math.hypot(lampCx - skCx, lampCy - skCy);
+      
+      if (dist < 100){
+        solveTest(lamp, emptySocket, litLamp);
+      }
+    }
+
+    lamp.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', moveDrag);
+    window.addEventListener('mouseup', endDrag);
+    lamp.addEventListener('touchstart', startDrag, {passive:false});
+    window.addEventListener('touchmove', moveDrag, {passive:false});
+    window.addEventListener('touchend', endDrag);
+  }
+
+  function solveTest(lamp, emptySocket, litLamp){
+    endPhaseTimer('teste_final');
+    
+    // Hide loose lamp and empty socket, show lit lamp
+    lamp.style.display = 'none';
+    if(emptySocket) emptySocket.style.display = 'none';
+    if(litLamp){
+      litLamp.style.display = 'block';
+      litLamp.classList.add('socket-img','lit');
+    }
+    
+    showToast('Resolvido!');
+    setTimeout(showResults, 900);
+  }
+
+  // ============================================================
+  // RESULTS
+  // ============================================================
+  function showResults(){
+    currentPhase = 'fim';
+    hud.classList.add('hidden');
+
+    const totalTime = elapsed();
+    const totalClicks = log.clicks.length;
+
+    document.getElementById('rTotalClicks').textContent = totalClicks;
+    document.getElementById('rTime').textContent = (totalTime/1000).toFixed(1)+'s';
+
+    const phases = ['teste_inicial', 'treino1', 'treino2', 'teste_final'];
+    const phaseNames = {
+      'teste_inicial': 'Pré-treino',
+      'treino1': 'Treino 1 (Lâmpada)',
+      'treino2': 'Treino 2 (Botão)',
+      'teste_final': 'Teste Final'
+    };
+    
+    let clicksHtml = '';
+    for (const p of phases){
+      const count = log.phaseClicks[p] || 0;
+      clicksHtml += `<div><b>${phaseNames[p]}:</b> ${count} cliques</div>`;
+    }
+    document.getElementById('clicksByPhase').innerHTML = clicksHtml;
+
+    let timeHtml = '';
+    for (const p of phases){
+      if (log.phaseTimes[p]){
+        const duration = log.phaseTimes[p].end 
+          ? ((log.phaseTimes[p].end - log.phaseTimes[p].start) / 1000).toFixed(1)
+          : 'incompleto';
+        timeHtml += `<div><b>${phaseNames[p]}:</b> ${duration}s</div>`;
+      } else {
+        timeHtml += `<div><b>${phaseNames[p]}:</b> não realizado</div>`;
+      }
+    }
+    document.getElementById('timeByPhase').innerHTML = timeHtml;
+
+    const heatmapGrid = document.getElementById('heatmapGrid');
+    heatmapGrid.innerHTML = '';
+
+    for (const p of phases){
+      const phaseMoves = log.moves.filter(m => m.phase === p);
+      const phaseClicks = log.clicks.filter(c => c.phase === p);
+      
+      if (phaseMoves.length === 0 && phaseClicks.length === 0) continue;
+
+      const canvas = document.createElement('canvas');
+      const tw = 320, th = Math.round(320 * (stageH()/stageW()));
+      canvas.width = tw; canvas.height = th;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#101022';
+      ctx.fillRect(0,0,tw,th);
+      
+      const sx = tw/stageW(), sy = th/stageH();
+      
+      for (const m of phaseMoves){
+        const x = m.x*sx, y = m.y*sy, r = 12;
+        const g = ctx.createRadialGradient(x,y,0,x,y,r);
+        g.addColorStop(0,'rgba(245,166,35,0.12)');
+        g.addColorStop(1,'rgba(245,166,35,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      }
+      
+      for (const c of phaseClicks){
+        ctx.fillStyle = 'rgba(46,194,126,0.9)';
+        ctx.beginPath(); ctx.arc(c.x*sx, c.y*sy, 3, 0, Math.PI*2); ctx.fill();
+      }
+
+      const item = document.createElement('div');
+      item.className = 'heatmap-item';
+      item.innerHTML = `<div class="label">${phaseNames[p]}</div>`;
+      item.appendChild(canvas);
+      heatmapGrid.appendChild(item);
+    }
+
+    results.classList.remove('hidden');
+  }
+
+  // ---------- CSV export ----------
+  function downloadCSV(){
+    let rows = ['type,t_ms,x,y,phase'];
+    for (const m of log.moves) rows.push(`move,${m.t},${m.x},${m.y},${m.phase}`);
+    for (const c of log.clicks) rows.push(`click,${c.t},${c.x},${c.y},${c.phase}`);
+    const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'dados_experimento.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- Boot ----------
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    overlay.classList.add('hidden');
+    hud.classList.remove('hidden');
+    experimentStart = now();
+    startPhase0();
+  });
+  document.getElementById('downloadBtn').addEventListener('click', downloadCSV);
+  document.getElementById('restartBtn').addEventListener('click', ()=>location.reload());
+
+})();
+</script>
+</body>
+</html>
